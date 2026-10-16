@@ -1,0 +1,19 @@
+// Top-level build file — AGP version pinned here.
+// Uses the legacy buildscript classpath (instead of the plugins{} block) so the
+// plugin resolves through buildscript repositories in every environment.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.2'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
