@@ -1,0 +1,46 @@
+apply plugin: 'com.android.application'
+
+// Build-time overrides (passed as -P from the workflow):
+//   -PARGON_APP_NAME="My App"  -PARGON_VERSION_CODE=3
+def rawName = project.findProperty('ARGON_APP_NAME') ?: 'Argon App'
+// XML-escape so any plain-text name is safe in generated resources.
+def appName = rawName.toString()
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+        .replace('"', '&quot;')
+        .replace("'", '&apos;')
+def versionCodeProp = 1
+try {
+    versionCodeProp = (project.findProperty('ARGON_VERSION_CODE') ?: '1').toString().trim() as int
+} catch (Exception ignored) {
+    versionCodeProp = 1
+}
+
+android {
+    namespace 'com.argonlab.webapp'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.argonlab.webapp'
+        minSdk 24
+        targetSdk 35
+        versionCode versionCodeProp
+        versionName '1.0'
+        resValue 'string', 'app_name', appName
+    }
+
+    buildTypes {
+        debug {
+            // Debug builds self-sign with the default debug keystore — fine for sideloading.
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
