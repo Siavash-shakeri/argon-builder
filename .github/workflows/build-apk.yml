@@ -1,0 +1,76 @@
+name: Build APK
+
+# Triggered remotely (see API.md). The Argon Chat app sends:
+#   event_type: "build-apk"
+#   client_payload: { appName, htmlBase64, versionCode }
+on:
+  repository_dispatch:
+    types: [build-apk]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Inject app content
+        env:
+          APP_NAME: ${{ github.event.client_payload.appName }}
+          HTML_B64: ${{ github.event.client_payload.htmlBase64 }}
+          VERSION_CODE: ${{ github.event.client_payload.versionCode }}
+        run: |
+          set -euo pipefail
+          # Sanitize inputs (keep it simple and safe)
+          APP_NAME="$(printf '%s' "${APP_NAME:-Argon App}" | tr -d '"' | tr '\n\r' ' ' | cut -c1-60)"
+          [ -z "$APP_NAME" ] && APP_NAME="Argon App"
+          if printf '%s' "${VERSION_CODE:-1}" | grep -Eq '^[0-9]{1,9}$'; then
+            VERSION_CODE="${VERSION_CODE:-1}"
+          else
+            VERSION_CODE=1
+          fi
+          echo "Building: name='$APP_NAME' versionCode=$VERSION_CODE"
+          python3 - "$HTML_B64" <<'EOF'
+          import base64, sys
+          html = base64.b64decode(sys.argv[1]).decode('utf-8')
+          assert '<html' in html.lower(), 'payload does not look like HTML'
+          assert len(html) < 2_000_000, 'HTML payload too large (2MB max)'
+          with open('template/app/src/main/assets/www/index.html', 'w', encoding='utf-8') as f:
+              f.write(html)
+          print('index.html written:', len(html), 'chars')
+          EOF
+          {
+            echo "ARGON_APP_NAME=$APP_NAME"
+            echo "ARGON_VERSION_CODE=$VERSION_CODE"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Gradle 8.11.1
+        # NOTE: the wrapper jar is intentionally NOT committed (binary). CI bootstraps
+        # the pinned Gradle version directly; the version matches gradle-wrapper.properties.
+        run: |
+          curl -sL --max-time 900 -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-8.11.1/bin/gradle --version
+
+      - name: Build debug APK
+        working-directory: template
+        run: |
+          /tmp/gradle-8.11.1/bin/gradle assembleDebug \
+            -PARGON_APP_NAME="$ARGON_APP_NAME" \
+            -PARGON_VERSION_CODE="$ARGON_VERSION_CODE" \
+            --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: template/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          if-no-files-found: error
